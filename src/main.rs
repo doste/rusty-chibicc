@@ -207,11 +207,11 @@ fn strtol(p: &mut &str) -> (i64, usize) {
 
 #[derive(Clone, Debug)]
 pub enum NodeKind {
-    ND_Add,         // +
-    ND_Sub,         // -
-    ND_Mul,         // *
-    ND_Div,         // /
-    ND_Num(i64),    // Integer
+    NDAdd,         // +
+    NDSub,         // -
+    NDMul,         // *
+    NDDiv,         // /
+    NDNum(i64),    // Integer
 }
 
 // AST node type
@@ -258,14 +258,14 @@ impl<'a> Parser<'a> {
         if Parser::current_token_string(&self) == "(" {
             // The current token is then a '(', so we need to start parsing from the next token, to do that we increment the index:
             self.idx_tokens += 1;
-            let mut node: Box<Node> = Parser::parse_expr(self);
+            let node: Box<Node> = Parser::parse_expr(self);
             Parser::skip(self, ")");
             return node;
         }
 
         match Parser::current_token_kind(&self) {
             TokenKind::TkNum(val) => {
-                let mut node: Box<Node> = Box::new(Node::new_num(*val));
+                let node: Box<Node> = Box::new(Node::new_num(*val));
                 // We have just consumed the Token corresponding to a number, so we increment the index, to move to the next token:
                 self.idx_tokens += 1;
                 return node;
@@ -286,13 +286,13 @@ impl<'a> Parser<'a> {
                 "*" => { 
                     // The current token is the '*', so to start parsing the 'primary' rule, we need to go to the next token:
                     self.idx_tokens += 1;
-                    node = Box::new(Node::new_binary(NodeKind::ND_Mul, node, Parser::parse_primary(self)));
+                    node = Box::new(Node::new_binary(NodeKind::NDMul, node, Parser::parse_primary(self)));
                     continue;
                 }
                 "/" => { 
                     // Same idea as before:
                     self.idx_tokens += 1;
-                    node = Box::new(Node::new_binary(NodeKind::ND_Div, node, Parser::parse_primary(self)));
+                    node = Box::new(Node::new_binary(NodeKind::NDDiv, node, Parser::parse_primary(self)));
                     continue;
                 }
                 _ => {
@@ -311,13 +311,13 @@ impl<'a> Parser<'a> {
                 "+" => {
                     // The current token is the '+', so to start parsing the 'mul' rule, we need to go to the next token:
                     self.idx_tokens += 1;
-                    node = Box::new(Node::new_binary(NodeKind::ND_Add, node, Parser::parse_mul(self)));
+                    node = Box::new(Node::new_binary(NodeKind::NDAdd, node, Parser::parse_mul(self)));
                     continue;
                 }
                 "-" => {
                     // Same idea as before:
                     self.idx_tokens += 1;
-                    node = Box::new(Node::new_binary(NodeKind::ND_Sub, node, Parser::parse_mul(self)));
+                    node = Box::new(Node::new_binary(NodeKind::NDSub, node, Parser::parse_mul(self)));
                     continue;
                 }
                 _ => {
@@ -348,7 +348,7 @@ impl Node {
 
     pub fn new_num(val: i64) -> Self {
         Self {
-            kind: NodeKind::ND_Num(val),
+            kind: NodeKind::NDNum(val),
             lhs: None,
             rhs: None,
         }
@@ -360,27 +360,61 @@ impl Node {
 impl fmt::Display for NodeKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            NodeKind::ND_Add => write!(f, "AST Node Add\n"),
-            NodeKind::ND_Sub => write!(f, "AST Node Sub\n"),
-            NodeKind::ND_Mul => write!(f, "AST Node Mul\n"),
-            NodeKind::ND_Div => write!(f, "AST Node Div\n"),
-            NodeKind::ND_Num(val) => write!(f, "AST Node Num: {}\n", val),
+            NodeKind::NDAdd => write!(f, "AST Node Add"),
+            NodeKind::NDSub => write!(f, "AST Node Sub"),
+            NodeKind::NDMul => write!(f, "AST Node Mul"),
+            NodeKind::NDDiv => write!(f, "AST Node Div"),
+            NodeKind::NDNum(val) => write!(f, "AST Node Num: {}", val),
         }
     }
 }
 
 
-
 impl fmt::Debug for Node {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.debug_struct("Node\n")
+        fmt.debug_struct("Node")
            .field("kind", &self.kind) // We add `bar` field.
            .field("lhs", &self.lhs) // We add `another` field.
            // We even add a field which doesn't exist (because why not?).
            .field("rhs", &self.rhs)
-           .field("\n", &1)
+           //.field("\n", &1)
            .finish() // We're good to go!
     }
+}
+
+/*
+Node { 
+    kind: ND_Add,
+    lhs: Some(Node{ 
+        kind: ND_Num(5),
+        lhs: None,
+        rhs: None }),
+    rhs: Some(Node {
+        kind: ND_Sub,
+        lhs: Some(Node { 
+            kind: ND_Num(24),
+            lhs: None,
+            rhs: None }),
+        rhs: Some(Node {
+            kind: ND_Num(1),
+            lhs: None,
+            rhs: None }) }) 
+}
+*/
+#[test]
+fn test_parser() {
+    test_parse(String::from("5+(24-1)"),
+                String::from("Node { kind: NDAdd, lhs: Some(Node { kind: NDNum(5), lhs: None, rhs: None }), rhs: Some(Node { kind: NDSub, lhs: Some(Node { kind: NDNum(24), lhs: None, rhs: None }), rhs: Some(Node { kind: NDNum(1), lhs: None, rhs: None }) }) }")
+                )
+}
+
+#[cfg(test)]
+fn test_parse(input: String, expect: String) {
+    let mut binding = &input[..];
+    let mut lex: Lex = Lex::new(&mut binding);
+    lex.tokenize();
+    let mut parser: Parser = Parser::new(&lex);
+    assert_eq!(format!("{:?}", parser.parse_expr()), expect);
 }
 
 
@@ -417,24 +451,24 @@ pub fn gen_binary_op(node: &Node) {
 
 pub fn gen_expr(node: &Node) {
     match node.kind {
-        NodeKind::ND_Add => {
+        NodeKind::NDAdd => {
                 gen_binary_op(node);
                 println!("add %rdi, %rax");
         }
-        NodeKind::ND_Sub => {
+        NodeKind::NDSub => {
                 gen_binary_op(node);
                 println!("sub %rdi, %rax");
         }
-        NodeKind::ND_Mul => {
+        NodeKind::NDMul => {
                 gen_binary_op(node);
                 println!("imul %rdi, %rax");
         }
-        NodeKind::ND_Div => {
+        NodeKind::NDDiv => {
             gen_binary_op(node);
             println!("cqo");
             println!("idiv %rdi");
         }
-        NodeKind::ND_Num(val) => {
+        NodeKind::NDNum(val) => {
             println!("mov {}, %rax", val);
         }
     }
@@ -457,8 +491,12 @@ fn main() {
     println!("{}", lex);    // For debugging
 
     let mut parser: Parser = Parser::new(&lex);
-    let node: Box<Node> = Parser::parse_expr(&mut parser);
-    //println!("{:?}", node);    // For debugging
+
+    //let node: Box<Node> = Parser::parse_expr(&mut parser);
+    let node: Box<Node> = parser.parse_expr();
+
+
+    println!("{:?}", node);    // For debugging
 
     println!("  .globl main");
     println!("main:");
