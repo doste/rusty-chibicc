@@ -72,7 +72,7 @@ impl<'b> Token<'b> {
 
 impl<'a> fmt::Display for Token<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.kind)
+        write!(f, "{} . str: {}", self.kind, self.string)
     }
 }
 
@@ -105,10 +105,14 @@ impl<'a> Lex<'a> {
         let mut program_copy_to_modify = self.program.clone();
         let mut start = 0;
 
-        // Skip whitespace characters.
-        let _ = program_copy_to_modify.chars().skip_while(|&c| c.is_whitespace());
-
         while let Some(c) = program_copy_to_modify.chars().next() {
+
+            // Skip whitespace characters
+            if c.is_whitespace() {
+                program_copy_to_modify = &program_copy_to_modify[1..];  // program++
+                start += 1;
+                continue;
+            }
 
             if c.is_digit(10) {
                 let (val, len) = strtol(&mut program_copy_to_modify);
@@ -246,7 +250,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn skip(&mut self, op: &str) {
-        if Parser::current_token_string(&self) != op {
+        if self.current_token_string() != op {
             eprintln!("Error: expected {}", op);
             std::process::exit(1);
         }
@@ -255,7 +259,7 @@ impl<'a> Parser<'a> {
 
     // primary = "(" expr ")" | num
     pub fn parse_primary(&mut self) -> Box<Node> {
-        if Parser::current_token_string(&self) == "(" {
+        if self.current_token_string() == "(" {
             // The current token is then a '(', so we need to start parsing from the next token, to do that we increment the index:
             self.idx_tokens += 1;
             let node: Box<Node> = Parser::parse_expr(self);
@@ -263,7 +267,7 @@ impl<'a> Parser<'a> {
             return node;
         }
 
-        match Parser::current_token_kind(&self) {
+        match self.current_token_kind() {
             TokenKind::TkNum(val) => {
                 let node: Box<Node> = Box::new(Node::new_num(*val));
                 // We have just consumed the Token corresponding to a number, so we increment the index, to move to the next token:
@@ -282,7 +286,7 @@ impl<'a> Parser<'a> {
     pub fn parse_mul(&mut self) -> Box<Node> {
         let mut node: Box<Node> = Parser::parse_primary(self);
         loop {
-            match Parser::current_token_string(self) {
+            match self.current_token_string() {
                 "*" => { 
                     // The current token is the '*', so to start parsing the 'primary' rule, we need to go to the next token:
                     self.idx_tokens += 1;
@@ -306,8 +310,9 @@ impl<'a> Parser<'a> {
     // expr = mul ("+" mul | "-" mul)*
     pub fn parse_expr(&mut self) -> Box<Node> {
         let mut node: Box<Node> = Parser::parse_mul(self);
+
         loop {
-            match Parser::current_token_string(self) {
+            match self.current_token_string() {
                 "+" => {
                     // The current token is the '+', so to start parsing the 'mul' rule, we need to go to the next token:
                     self.idx_tokens += 1;
@@ -420,13 +425,18 @@ fn test_parse(input: String, expect: String) {
 
 
 ////////////////// CODE GENERATOR
+/// 
+/// RAX ==> x0
+/// RDI ==> x1
 
 pub fn push() {
-    println!("push %rax");
+    //println!("push %rax");
+    println!("  stp x0, x0, [sp, #-16]!");
 }
 
 pub fn pop(arg: &str) {
-    println!("pop {}", arg);
+    //println!("pop {}", arg);
+    println!("  ldp {}, x29, [sp], #16", arg);
 }
 
 pub fn gen_binary_op(node: &Node) {
@@ -446,36 +456,43 @@ pub fn gen_binary_op(node: &Node) {
         std::process::exit(1);
     }
 
-    pop("%rdi");
+    //pop("%rdi");
+    pop("x1");
 }
 
 pub fn gen_expr(node: &Node) {
     match node.kind {
         NodeKind::NDAdd => {
                 gen_binary_op(node);
-                println!("add %rdi, %rax");
+                //println!("add %rdi, %rax");
+                println!("  add x0, x0, x1");
         }
         NodeKind::NDSub => {
                 gen_binary_op(node);
-                println!("sub %rdi, %rax");
+                //println!("sub %rdi, %rax");
+                println!("  sub x0, x0, x1");
         }
         NodeKind::NDMul => {
                 gen_binary_op(node);
-                println!("imul %rdi, %rax");
+                //println!("imul %rdi, %rax");
+                println!("  mul x0, x0, x1");
         }
         NodeKind::NDDiv => {
             gen_binary_op(node);
-            println!("cqo");
-            println!("idiv %rdi");
+            //println!("cqo");
+            //println!("idiv %rdi");
+            println!("  sdiv x0, x0, x1");
         }
         NodeKind::NDNum(val) => {
-            println!("mov {}, %rax", val);
+            //println!("mov {}, %rax", val);
+            println!("  mov x0, #{}", val);
         }
     }
     
 }
 
 fn main() {
+    
     let args: Vec<String> = env::args().collect();
 
     if args.len() != 2 {
@@ -488,7 +505,7 @@ fn main() {
 
     let mut lex: Lex = Lex::new(&mut p);
     lex.tokenize();
-    println!("{}", lex);    // For debugging
+    //println!("{}", lex);    // For debugging
 
     let mut parser: Parser = Parser::new(&lex);
 
@@ -496,13 +513,21 @@ fn main() {
     let node: Box<Node> = parser.parse_expr();
 
 
-    println!("{:?}", node);    // For debugging
+    //println!("{:?}", node);    // For debugging
 
-    println!("  .globl main");
-    println!("main:");
+    //println!("  .globl main");
+    //println!("main:");
+    
+    println!("  .globl _start");
+    println!("_start:");
+    println!("stp x19, x30, [sp, #-16]!"); // Keep x19 and x30 (link register), so we can use them as scratch registers
 
     // Traverse the AST to emit assembly:
     gen_expr(&node);
-    println!("  ret");
 
+    println!("ldp x19, x30, [sp], #16");  // Restore x19 and x30 (link register)
+    println!("  ret");
+    
+
+    
 }
