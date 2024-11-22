@@ -215,6 +215,7 @@ pub enum NodeKind {
     NDSub,         // -
     NDMul,         // *
     NDDiv,         // /
+    NDNeg,         // unary -
     NDNum(i64),    // Integer
 }
 
@@ -262,8 +263,8 @@ impl<'a> Parser<'a> {
         if self.current_token_string() == "(" {
             // The current token is then a '(', so we need to start parsing from the next token, to do that we increment the index:
             self.idx_tokens += 1;
-            let node: Box<Node> = Parser::parse_expr(self);
-            Parser::skip(self, ")");
+            let node: Box<Node> = self.parse_expr();
+            self.skip(")");
             return node;
         }
 
@@ -282,21 +283,46 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // mul = primary ("*" primary | "/" primary)*
+    // unary = ("+" | "-") unary
+    //          | primary
+    pub fn parse_unary(&mut self) -> Box<Node> {
+        match self.current_token_string() {
+            "+" => {
+                // The current token is then a '+', so we need to start parsing from the next token, to do that we increment the index:
+                self.idx_tokens += 1;
+                return self.parse_unary();
+            }
+            "-" => {
+                // Same idea, we just consumed the '-':
+                self.idx_tokens += 1;
+                let node: Box<Node> = Box::new(Node::new_unary(self.parse_unary()));
+                // We have just consumed the Token corresponding to a number, so we increment the index, to move to the next token:
+                //self.idx_tokens += 1;
+                //???????????????????????????????????????????
+                return node;
+            }
+            _ => {
+                return self.parse_primary();
+            }
+        }
+    }
+
+    // mul = unary ("*" unary | "/" unary)*
     pub fn parse_mul(&mut self) -> Box<Node> {
-        let mut node: Box<Node> = Parser::parse_primary(self);
+        let mut node: Box<Node> = self.parse_unary();
+
         loop {
             match self.current_token_string() {
                 "*" => { 
                     // The current token is the '*', so to start parsing the 'primary' rule, we need to go to the next token:
                     self.idx_tokens += 1;
-                    node = Box::new(Node::new_binary(NodeKind::NDMul, node, Parser::parse_primary(self)));
+                    node = Box::new(Node::new_binary(NodeKind::NDMul, node, self.parse_unary()));
                     continue;
                 }
                 "/" => { 
                     // Same idea as before:
                     self.idx_tokens += 1;
-                    node = Box::new(Node::new_binary(NodeKind::NDDiv, node, Parser::parse_primary(self)));
+                    node = Box::new(Node::new_binary(NodeKind::NDDiv, node, self.parse_unary()));
                     continue;
                 }
                 _ => {
@@ -309,20 +335,20 @@ impl<'a> Parser<'a> {
 
     // expr = mul ("+" mul | "-" mul)*
     pub fn parse_expr(&mut self) -> Box<Node> {
-        let mut node: Box<Node> = Parser::parse_mul(self);
+        let mut node: Box<Node> = self.parse_mul();
 
         loop {
             match self.current_token_string() {
                 "+" => {
                     // The current token is the '+', so to start parsing the 'mul' rule, we need to go to the next token:
                     self.idx_tokens += 1;
-                    node = Box::new(Node::new_binary(NodeKind::NDAdd, node, Parser::parse_mul(self)));
+                    node = Box::new(Node::new_binary(NodeKind::NDAdd, node, self.parse_mul()));
                     continue;
                 }
                 "-" => {
                     // Same idea as before:
                     self.idx_tokens += 1;
-                    node = Box::new(Node::new_binary(NodeKind::NDSub, node, Parser::parse_mul(self)));
+                    node = Box::new(Node::new_binary(NodeKind::NDSub, node, self.parse_mul()));
                     continue;
                 }
                 _ => {
@@ -359,6 +385,14 @@ impl Node {
         }
     }
 
+    pub fn new_unary(expr: Box<Node>) -> Self {
+        Self {
+            kind: NodeKind::NDNeg,
+            lhs: Some(expr),
+            rhs: None,
+        }
+    }
+
 }
 
 
@@ -370,6 +404,7 @@ impl fmt::Display for NodeKind {
             NodeKind::NDMul => write!(f, "AST Node Mul"),
             NodeKind::NDDiv => write!(f, "AST Node Div"),
             NodeKind::NDNum(val) => write!(f, "AST Node Num: {}", val),
+            NodeKind::NDNeg => write!(f, "AST Node Neg"),
         }
     }
 }
@@ -486,6 +521,16 @@ pub fn gen_expr(node: &Node) {
         NodeKind::NDNum(val) => {
             //println!("mov {}, %rax", val);
             println!("  mov x0, #{}", val);
+        }
+        NodeKind::NDNeg => {
+            //println!("neg %rax");
+            if let Some(lhs) = &node.lhs {
+                gen_expr(&(*lhs));
+            } else {
+                eprintln!("Error: gen_expr NDNeg");
+                std::process::exit(1);
+            }
+            println!("  NEG x0, x0");
         }
     }
     
