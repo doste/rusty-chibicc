@@ -1,5 +1,6 @@
 use std::env;
 use std::fmt;
+use std::str::Chars;
 
 #[derive(Debug)]
 pub enum Op {
@@ -9,6 +10,13 @@ pub enum Op {
     Div,
     LParen,
     RParen,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    Assign,
 }
 
 impl fmt::Display for Op {
@@ -20,6 +28,13 @@ impl fmt::Display for Op {
             Op::Div => write!(f, "/"),
             Op::LParen => write!(f, "("),
             Op::RParen => write!(f, ")"),
+            Op::Eq => write!(f, "=="),
+            Op::Ne => write!(f, "!="),
+            Op::Lt => write!(f, "<"),
+            Op::Le => write!(f, "<="),
+            Op::Gt => write!(f, ">"),
+            Op::Ge => write!(f, ">="),
+            Op::Assign => write!(f, "="),
         }
     }
 }
@@ -93,19 +108,27 @@ impl<'a> Lex<'a> {
         }
     }
 
-    pub fn add_punctuator_tok(&mut self, token_kind: TokenKind, program_copy: &mut &str, start_idx: &mut usize) {
-        self.tokens.push(Token::new(token_kind, &self.program[*start_idx..*start_idx+1]));
-        *program_copy = &(*program_copy)[1..];    // program++
-        *start_idx = *start_idx + 1;
+    pub fn add_punctuator_tok(&mut self, token_kind: TokenKind, program_copy: &mut &str, start_idx: &mut usize, len: usize) {
+        self.tokens.push(Token::new(token_kind, &self.program[*start_idx..*start_idx+len]));
+        *program_copy = &(*program_copy)[len..];    // program++
+        *start_idx = *start_idx + len;
     }
 
+   
     fn tokenize(&mut self) {
         // Fill in the tokens vector
 
         let mut program_copy_to_modify = self.program.clone();
         let mut start = 0;
 
+        let mut iter_peek = program_copy_to_modify.chars().clone().peekable();
+
+        let mut c_copy = 0;
+        let mut c_len = 0;
+
         while let Some(c) = program_copy_to_modify.chars().next() {
+
+            let it = iter_peek.next();
 
             // Skip whitespace characters
             if c.is_whitespace() {
@@ -116,6 +139,7 @@ impl<'a> Lex<'a> {
 
             if c.is_digit(10) {
                 let (val, len) = strtol(&mut program_copy_to_modify);
+                c_len = len as i64;     // We save it here because we'll be using it later
                 self.tokens.push(Token::new(TokenKind::TkNum(val), &self.program[start..start+len]));
                 start = start + len;
                 continue;
@@ -125,34 +149,97 @@ impl<'a> Lex<'a> {
             match c {
                 '+' => { 
                     self.add_punctuator_tok(TokenKind::TkPunct(Op::Plus),
-                                        &mut program_copy_to_modify, &mut start);
+                                        &mut program_copy_to_modify, &mut start, 1);
                     continue;
                 }
                 '-' => {
                     self.add_punctuator_tok(TokenKind::TkPunct(Op::Sub),
-                                        &mut program_copy_to_modify, &mut start);
+                                        &mut program_copy_to_modify, &mut start, 1);
                     continue;
                 }
                 '(' => {
                     self.add_punctuator_tok(TokenKind::TkPunct(Op::LParen),
-                                        &mut program_copy_to_modify, &mut start);
+                                        &mut program_copy_to_modify, &mut start, 1);
                     continue;
                 }
                 ')' => {
                     self.add_punctuator_tok(TokenKind::TkPunct(Op::RParen),
-                                        &mut program_copy_to_modify, &mut start);
+                                        &mut program_copy_to_modify, &mut start, 1);
                     continue;
                 }
                 '*' => {
                     self.add_punctuator_tok(TokenKind::TkPunct(Op::Mult),
-                                        &mut program_copy_to_modify, &mut start);
+                                        &mut program_copy_to_modify, &mut start, 1);
                     continue;
                 }
                 '/' => {
                     self.add_punctuator_tok(TokenKind::TkPunct(Op::Div),
-                                        &mut program_copy_to_modify, &mut start);
+                                        &mut program_copy_to_modify, &mut start, 1);
                     continue;
                 }
+                '=' => {
+                    for _ in 1..c_len {
+                        iter_peek.next();
+                    }
+
+                    if let Some(another) = iter_peek.peek() {
+                        if *another == '=' {
+                            self.add_punctuator_tok(TokenKind::TkPunct(Op::Eq),
+                                        &mut program_copy_to_modify, &mut start, 2);
+                        }
+                    } else {
+                        self.add_punctuator_tok(TokenKind::TkPunct(Op::Assign),
+                                        &mut program_copy_to_modify, &mut start, 1);
+                    }
+                    continue;
+                }
+                '!' => {
+                    for _ in 1..c_len {
+                        iter_peek.next();
+                    }
+
+                    if let Some(another) = iter_peek.peek() {
+                        if *another == '=' {
+                            self.add_punctuator_tok(TokenKind::TkPunct(Op::Ne), &mut program_copy_to_modify, &mut start, 2);
+                        } else {
+                            eprintln!("Error: unsupported operation '!' {} {}", *another, c);
+                            std::process::exit(1);
+                        }
+                    } 
+                    continue;
+                }
+                '<' => {
+                    for _ in 1..c_len {
+                        iter_peek.next();
+                    }
+
+                    if let Some(another) = iter_peek.peek() {
+                        if *another == '=' {
+                            self.add_punctuator_tok(TokenKind::TkPunct(Op::Le), &mut program_copy_to_modify, &mut start, 2);
+                        } else {
+                            self.add_punctuator_tok(TokenKind::TkPunct(Op::Lt),
+                                        &mut program_copy_to_modify, &mut start, 1);
+                        }
+                    } 
+                    continue;
+                }
+
+                '>' => {
+                    for _ in 1..c_len {
+                        iter_peek.next();
+                    }
+
+                    if let Some(another) = iter_peek.peek() {
+                        if *another == '=' {    
+                            self.add_punctuator_tok(TokenKind::TkPunct(Op::Ge), &mut program_copy_to_modify, &mut start, 2);
+                        } else {
+                            self.add_punctuator_tok(TokenKind::TkPunct(Op::Gt),
+                                        &mut program_copy_to_modify, &mut start, 1);
+                        }
+                    } 
+                    continue;
+                }
+
                 _ => {
                     eprintln!("Error: unsupported operation");
                     std::process::exit(1);
@@ -216,6 +303,12 @@ pub enum NodeKind {
     NDMul,         // *
     NDDiv,         // /
     NDNeg,         // unary -
+    NDEq,          // ==
+    NDNe,          // !=
+    NDLt,          // <
+    NDLe,          // <=
+    NDGt,          // >
+    NDGe,          // >=
     NDNum(i64),    // Integer
 }
 
@@ -256,6 +349,11 @@ impl<'a> Parser<'a> {
             std::process::exit(1);
         }
         self.idx_tokens += 1;
+    }
+
+    // expr = equality
+    pub fn parse_expr(&mut self) -> Box<Node> {
+        self.parse_equality()
     }
 
     // primary = "(" expr ")" | num
@@ -333,8 +431,8 @@ impl<'a> Parser<'a> {
         return node;
     }
 
-    // expr = mul ("+" mul | "-" mul)*
-    pub fn parse_expr(&mut self) -> Box<Node> {
+    // add = mul ("+" mul | "-" mul)*
+    pub fn parse_add(&mut self) -> Box<Node> {
         let mut node: Box<Node> = self.parse_mul();
 
         loop {
@@ -358,6 +456,71 @@ impl<'a> Parser<'a> {
         }
         return node;
     }
+
+    // equality = relational ("==" relational | "!=" relational)*
+    pub fn parse_equality(&mut self) -> Box<Node> {
+        let mut node: Box<Node> = self.parse_relational();
+
+        loop {
+            match self.current_token_string() {
+                "==" => {
+                    // The current token is the '+', so to start parsing the 'mul' rule, we need to go to the next token:
+                    self.idx_tokens += 1;
+                    node = Box::new(Node::new_binary(NodeKind::NDEq, node, self.parse_relational()));
+                    continue;
+                }
+                "!=" => {
+                    // Same idea as before:
+                    self.idx_tokens += 1;
+                    node = Box::new(Node::new_binary(NodeKind::NDNe, node, self.parse_relational()));
+                    continue;
+                }
+                _ => {
+                    break;
+                }
+            }
+        }
+        return node;
+    }
+
+    // relational = add ("<" add | "<=" add | ">" add | ">=" add)*
+    pub fn parse_relational(&mut self) -> Box<Node> {
+        let mut node: Box<Node> = self.parse_add();
+
+        loop {
+            match self.current_token_string() {
+                "<" => {
+                    // The current token is the '+', so to start parsing the 'mul' rule, we need to go to the next token:
+                    self.idx_tokens += 1;
+                    node = Box::new(Node::new_binary(NodeKind::NDLt, node, self.parse_add()));
+                    continue;
+                }
+                "<=" => {
+                    // Same idea as before:
+                    self.idx_tokens += 1;
+                    node = Box::new(Node::new_binary(NodeKind::NDLe, node, self.parse_add()));
+                    continue;
+                }
+                ">" => {
+                    // Same idea as before:
+                    self.idx_tokens += 1;
+                    node = Box::new(Node::new_binary(NodeKind::NDGt, node, self.parse_add()));
+                    continue;
+                }
+                ">=" => {
+                    // Same idea as before:
+                    self.idx_tokens += 1;
+                    node = Box::new(Node::new_binary(NodeKind::NDGe, node, self.parse_add()));
+                    continue;
+                }
+                _ => {
+                    break;
+                }
+            }
+        }
+        return node;
+    }
+
 }
 
 impl Node {
@@ -405,6 +568,12 @@ impl fmt::Display for NodeKind {
             NodeKind::NDDiv => write!(f, "AST Node Div"),
             NodeKind::NDNum(val) => write!(f, "AST Node Num: {}", val),
             NodeKind::NDNeg => write!(f, "AST Node Neg"),
+            NodeKind::NDEq => write!(f, "AST Node Eq"),
+            NodeKind::NDNe => write!(f, "AST Node Not Equal"),          
+            NodeKind::NDLt => write!(f, "AST Node LessThan"),          
+            NodeKind::NDLe => write!(f, "AST Node Less or Equal"), 
+            NodeKind::NDGe => write!(f, "AST Node GreaterThan"), 
+            NodeKind::NDGt => write!(f, "AST Node Greater or Equal"),          
         }
     }
 }
@@ -530,7 +699,49 @@ pub fn gen_expr(node: &Node) {
                 eprintln!("Error: gen_expr NDNeg");
                 std::process::exit(1);
             }
-            println!("  NEG x0, x0");
+            println!("  neg x0, x0");
+        }
+        NodeKind::NDEq => {                                     /// 1 = true . 0 = false
+            gen_binary_op(node);
+            //printf("  cmp %%rdi, %%rax\n");
+            //printf("  sete %%al\n");
+            //printf("  movzb %%al, %%rax\n");
+            println!("  cmp x0, x1");
+            println!("  cset x0, eq");
+        }
+        NodeKind::NDNe => {
+            gen_binary_op(node);
+            //printf("  cmp %%rdi, %%rax\n");
+            //printf("  setne %%al\n");
+            //printf("  movzb %%al, %%rax\n");
+            println!("  cmp x0, x1");
+            println!("  cset x0, ne");
+        }
+        NodeKind::NDLt => {
+            gen_binary_op(node);
+            //printf("  cmp %%rdi, %%rax\n");
+            //printf("  setl %%al\n");
+            //printf("  movzb %%al, %%rax\n");
+            println!("  cmp x0, x1");
+            println!("  cset x0, lt");
+        }
+        NodeKind::NDLe => {
+            gen_binary_op(node);
+            //printf("  cmp %%rdi, %%rax\n");   
+            //printf("  setle %%al\n");
+            //printf("  movzb %%al, %%rax\n");
+            println!("  cmp x0, x1");
+            println!("  cset x0, le");
+        }
+        NodeKind::NDGt => {
+            gen_binary_op(node);
+            println!("  cmp x0, x1");
+            println!("  cset x0, gt");
+        }
+        NodeKind::NDGe => {
+            gen_binary_op(node);
+            println!("  cmp x0, x1");
+            println!("  cset x0, ge");
         }
     }
     
@@ -554,14 +765,11 @@ fn main() {
 
     let mut parser: Parser = Parser::new(&lex);
 
-    //let node: Box<Node> = Parser::parse_expr(&mut parser);
     let node: Box<Node> = parser.parse_expr();
 
 
     //println!("{:?}", node);    // For debugging
 
-    //println!("  .globl main");
-    //println!("main:");
     
     println!("  .globl _start");
     println!("_start:");
