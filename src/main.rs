@@ -29,26 +29,21 @@ pub fn main() {
 
     let mut lex: Lex = Lex::new(&mut p);
     lex.tokenize();
-    //println!("{}", lex);    // For debugging
+    //println!("TOKENS: \n {}", lex);    // For debugging
 
     let mut parser: Parser = Parser::new(&lex);
 
-    let node: Box<Node> = parser.parse_expr();
-
-    //println!("{:?}", node);    // For debugging
+    let ast_nodes: Vec<Box<Node>> = parser.parse();
+    
+    //println!("AST NODES:");       // For debugging
+    //for node in &ast_nodes {
+    //    println!("{:?}", node);
+    //}
+    
 
     let code_gen: CodeGenerator = CodeGenerator::new(&parser);
-    
-    println!("  .globl _start");
-    println!("_start:");
-    println!("stp x19, x30, [sp, #-16]!"); // Keep x19 and x30 (link register), so we can use them as scratch registers
-
     // Traverse the AST to emit assembly:
-    code_gen.gen_expr(&node);
-
-    println!("ldp x19, x30, [sp], #16");  // Restore x19 and x30 (link register)
-    println!("  ret");
-    
+    code_gen.codegen(&ast_nodes);
 
     
 }

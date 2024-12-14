@@ -7,14 +7,14 @@ pub struct Token<'a> {
     pub string: &'a str,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum TokenKind {
     TkPunct(Op),     // Punctuators
     TkNum(i64),      // Numeric literals
     TkEOF,           // End-of-file markers
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Op {
     Plus,
     Sub,
@@ -29,6 +29,7 @@ pub enum Op {
     Gt,
     Ge,
     Assign,
+    Semicolon,
 }
 
 
@@ -200,6 +201,12 @@ impl<'a> Lex<'a> {
                     continue;
                 }
 
+                ';' => {
+                    self.add_punctuator_tok(TokenKind::TkPunct(Op::Semicolon),
+                                        &mut program_copy_to_modify, &mut start, 1);
+                    continue;
+                }
+
                 _ => {
                     eprintln!("Error: unsupported operation");
                     std::process::exit(1);
@@ -261,6 +268,7 @@ impl fmt::Display for Op {
             Op::Gt => write!(f, ">"),
             Op::Ge => write!(f, ">="),
             Op::Assign => write!(f, "="),
+            Op::Semicolon => write!(f, ";"),
         }
     }
 }

@@ -51,6 +51,23 @@ impl<'a> CodeGenerator<'a> {
         self.pop("x1");
     }
 
+    pub fn gen_stmt(&self, node: &Node) {
+        match node.kind {
+            NodeKind::NDExprStmt => {
+                if let Some(lhs) = &node.lhs {
+                    self.gen_expr(&(*lhs));
+                } else {
+                    eprintln!("Error: gen_stmt");
+                    std::process::exit(1);
+                }
+            } 
+            _ => {
+                eprintln!("Error: invalid statement");
+                std::process::exit(1);
+            }
+        }
+    }
+
     pub fn gen_expr(&self, node: &Node) {
         match node.kind {
             NodeKind::NDAdd => {
@@ -130,7 +147,26 @@ impl<'a> CodeGenerator<'a> {
                 println!("  cmp x0, x1");
                 println!("  cset x0, ge");
             }
+            _ => {
+                eprintln!("Error: invalid expression");
+                std::process::exit(1);
+            }
         }
         
     }
+
+
+    pub fn codegen(&self, nodes: &Vec<Box<Node>>) {
+        println!("  .globl _start");
+        println!("_start:");
+        println!("stp x19, x30, [sp, #-16]!"); // Keep x19 and x30 (link register), so we can use them as scratch registers
+
+        for node in nodes {
+            self.gen_stmt(node);
+        }
+
+        println!("ldp x19, x30, [sp], #16");  // Restore x19 and x30 (link register)
+        println!("  ret");
+    }
+
 }

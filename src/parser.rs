@@ -18,6 +18,7 @@ pub enum NodeKind {
     NDLe,          // <=
     NDGt,          // >
     NDGe,          // >=
+    NDExprStmt,    // Expression statement
     NDNum(i64),    // Integer
 }
 
@@ -60,6 +61,32 @@ impl<'a> Parser<'a> {
         self.idx_tokens += 1;
     }
 
+    // program = stmt*
+    pub fn parse(&mut self) -> Vec<Box<Node>> {
+        let mut ast_nodes: Vec<Box<Node>> = Vec::new();
+
+        while self.idx_tokens < self.lexer.tokens.len() - 1 {
+            if self.lexer.tokens[self.idx_tokens].kind != TokenKind::TkEOF {
+                ast_nodes.push(self.parse_stmt());
+            }
+        }
+        ast_nodes
+    }
+
+    // stmt = expr-stmt
+    pub fn parse_stmt(&mut self) -> Box<Node> {
+        self.parse_expr_stmt()
+    }
+  
+    // expr-stmt = expr ";"
+    pub fn parse_expr_stmt(&mut self) -> Box<Node> {
+        let node: Box<Node> = Box::new(Node::new_unary(NodeKind::NDExprStmt, self.parse_expr()));
+
+        self.skip(";");
+
+        return node;
+    }
+
     // expr = equality
     pub fn parse_expr(&mut self) -> Box<Node> {
         self.parse_equality()
@@ -75,6 +102,8 @@ impl<'a> Parser<'a> {
             return node;
         }
 
+        //println!("self.current_token_kind() idx: {} ESSSSSS {}", self.idx_tokens, self.current_token_kind());
+
         match self.current_token_kind() {
             TokenKind::TkNum(val) => {
                 let node: Box<Node> = Box::new(Node::new_num(*val));
@@ -84,7 +113,7 @@ impl<'a> Parser<'a> {
             }
 
             _ => {
-                eprintln!("Error: expected an expression");
+                eprintln!("Error: expected an expression. Got {:?}", self.current_token_kind());
                 std::process::exit(1);
             }
         }
@@ -102,10 +131,7 @@ impl<'a> Parser<'a> {
             "-" => {
                 // Same idea, we just consumed the '-':
                 self.idx_tokens += 1;
-                let node: Box<Node> = Box::new(Node::new_unary(self.parse_unary()));
-                // We have just consumed the Token corresponding to a number, so we increment the index, to move to the next token:
-                //self.idx_tokens += 1;
-                //???????????????????????????????????????????
+                let node: Box<Node> = Box::new(Node::new_unary(NodeKind::NDNeg, self.parse_unary()));
                 return node;
             }
             _ => {
@@ -257,9 +283,9 @@ impl Node {
         }
     }
 
-    pub fn new_unary(expr: Box<Node>) -> Self {
+    pub fn new_unary(kind: NodeKind, expr: Box<Node>) -> Self {
         Self {
-            kind: NodeKind::NDNeg,
+            kind,
             lhs: Some(expr),
             rhs: None,
         }
@@ -282,7 +308,8 @@ impl fmt::Display for NodeKind {
             NodeKind::NDLt => write!(f, "AST Node LessThan"),          
             NodeKind::NDLe => write!(f, "AST Node Less or Equal"), 
             NodeKind::NDGe => write!(f, "AST Node GreaterThan"), 
-            NodeKind::NDGt => write!(f, "AST Node Greater or Equal"),          
+            NodeKind::NDGt => write!(f, "AST Node Greater or Equal"),    
+            NodeKind::NDExprStmt => write!(f, "AST Node Expression Statement")      
         }
     }
 }
